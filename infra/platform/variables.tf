@@ -36,9 +36,19 @@ variable "worker_image" {
 }
 
 variable "registry_server" {
-  description = "Private registry host for the image pull secret (e.g. ghcr.io). Empty = images are pullable without credentials"
+  description = "Private registry HOST for the image pull secret (e.g. ghcr.io, <label>.sakuracr.jp; no path, no scheme). Must be the host part of worker_image. Empty = images are pullable without credentials"
   type        = string
   default     = ""
+  validation {
+    condition     = var.registry_server == "" || can(regex("^[a-z0-9]([a-z0-9.-]*[a-z0-9])?(:[0-9]+)?$", var.registry_server))
+    error_message = "registry_server must be a registry host only (e.g. ghcr.io or <label>.sakuracr.jp), without https:// or a /path."
+  }
+  validation {
+    # The pull secret is keyed by this host; a worker_image on another host
+    # gets no credentials and the pods fail with ImagePullBackOff.
+    condition     = var.registry_server == "" || startswith(var.worker_image, "${var.registry_server}/")
+    error_message = "worker_image is not on registry_server: the host part of worker_image (written by scripts/build-push.sh) must equal registry_server."
+  }
 }
 
 variable "registry_username" {

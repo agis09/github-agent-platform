@@ -338,9 +338,11 @@ REGISTRY=<registry>/<namespace> INSTALL_CLAUDE_CODE=true CLAUDE_CODE_VERSION=<ex
 
 | 値 | 置き場所 |
 |---|---|
-| `registry_server`（例: `ghcr.io`） | `infra/platform/terraform.tfvars` |
+| `registry_server`（例: `ghcr.io`、`<label>.sakuracr.jp`） | `infra/platform/terraform.tfvars` |
 | `registry_username` | `infra/platform/terraform.tfvars` |
 | `registry_password`（パスワード / トークン） | `.env` の `TF_VAR_registry_password` |
+
+`registry_server` には **ホスト名だけ**（`https://` やパスは付けない）を書き、`images.auto.tfvars` の `worker_image` のホスト部分と一致させてください。食い違っていると、Terraform の検証エラーになります（ノードが認証情報なしで pull しようとして `ImagePullBackOff` になるのを防ぐため）。
 
 公開レジストリの場合や、ノード自身に pull 権限がある場合（EKS ノードの IAM ロールで ECR、GKE ノードのサービスアカウントで Artifact Registry など）は設定不要です（`registry_server` を空のまま）。pull 専用（読み取り専用）のユーザー / トークンを使うことを推奨します。
 
@@ -384,6 +386,8 @@ set -a; . ../../.env; set +a
 ```
 
 最低限必要な変数: `worker_image`（build-push.sh が書き込み）、`agent_api_key`・`webhook_secret`（`.env`）、`reader_app_id`・`reader_installation_id`・`reader_private_key_path`（[3.1 の対応表](#31-控えた値の設定先)）、LLM の設定（[4.1](#41-設定する場所)）。
+
+`infra/clusters/` の構築例でクラスタを作った場合は、その README にある `infra/platform` 用の必須設定（`kubeconfig_path`、`registry_server`、webhook の Service など）も設定してください（例: [さくらのクラウド k3s](../infra/clusters/sakura-k3s/README.md#4-イメージとプラットフォーム)）。
 
 ### 8.2 リポジトリスナップショットを作る
 

@@ -79,17 +79,22 @@ docker login "$(terraform output -raw registry_fqdn)" -u push   # パスワー�
 REGISTRY=$(terraform output -raw registry_fqdn) ../../../scripts/build-push.sh
 ```
 
-`infra/platform/terraform.tfvars` の例:
+次に [`infra/platform`](../../platform/) でプラットフォーム本体をデプロイします（[docs/usage.md §8](../../../docs/usage.md#8-プラットフォームをデプロイする)）。このクラスタを使うには、`infra/platform/terraform.tfvars` に **次の設定が必須** です（`terraform.tfvars.example` の既定値のままでは動きません）。
 
 ```hcl
 kubeconfig_path      = "~/.config/agent-platform/kubeconfig-sakura-k3s.yaml"
-registry_server      = "<terraform output registry_fqdn>"
+registry_server      = "<label>.sakuracr.jp"      # terraform output -raw registry_fqdn
 registry_username    = "push"
 webhook_service_type = "NodePort"
 webhook_node_port    = 30080
 ```
 
-`registry_password` は `.env` の `TF_VAR_registry_password` に書きます（[docs/usage.md](../../../docs/usage.md#6-イメージをビルドする)）。
+| 設定 | 理由 |
+|---|---|
+| `kubeconfig_path` | この Terraform が書き出した kubeconfig。既定の `~/.kube/config` のままだと接続先がなく、`dial tcp [::1]:80: connect: connection refused` で失敗します。トンネル（`scripts/tunnel.sh`）も起動しておきます |
+| `registry_server` | ノードがイメージを pull するための Secret のキー。**ホスト名だけ**（`https://` やパスは付けない）を書き、`images.auto.tfvars` の `worker_image` のホスト部分と一致させます。食い違うと Terraform の検証エラーになります |
+| `registry_username` / `TF_VAR_registry_password` | この Terraform が作ったレジストリなら `push` と `terraform output -raw registry_password`（パスワードは `.env` に書きます）。別に作ったレジストリを使う場合は、そのホスト・ユーザー・パスワードを指定します |
+| `webhook_service_type` / `webhook_node_port` | VPC ルータはグローバル IP の 8080 番を server の 30080 番に転送します。Orchestrator の Service をこの番号の NodePort にします（`webhook_public_port` / `webhook_node_port` を変えた場合はその値） |
 
 LLM には同じさくらのクラウドの AI Engine が使えます（`agent_base_url = "https://api.ai.sakura.ad.jp/v1"`、[docs/usage.md §4](../../../docs/usage.md#4-ai-エージェントと-llm-を選ぶ)）。
 

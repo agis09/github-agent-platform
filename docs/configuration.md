@@ -42,7 +42,7 @@ AI Engine の詳細は [usage.md「AI エージェントと LLM を選ぶ」](./
 | `pod_security_version` | `latest` | PSS の enforce-version ラベル |
 | `worker_image` | （必須） | Worker イメージ。`<repo>@sha256:<64 hex>` の digest 固定。`scripts/build-push.sh` が `images.auto.tfvars` に書き込む |
 | `egress_proxy_image` | `""` | smokescreen イメージ（digest 固定）。`egress_level = allowlist` で必須 |
-| `registry_server` / `registry_username` / `registry_password` | `""` | プライベートレジストリの pull 用 credential。`registry_server` が空なら imagePullSecret を作らない |
+| `registry_server` / `registry_username` / `registry_password` | `""` | プライベートレジストリの pull 用 credential。`registry_server` はホスト名のみで、`worker_image` のホスト部分と一致させる（検証あり）。空なら imagePullSecret を作らない。`registry_password` は `.env` の `TF_VAR_registry_password` で渡す |
 | `resource_quota` | pods 8 ほか | namespace の ResourceQuota |
 
 ### エージェント・LLM
