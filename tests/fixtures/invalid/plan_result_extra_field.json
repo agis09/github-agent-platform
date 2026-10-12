@@ -1,0 +1,8 @@
+{
+  "schema_version": "1",
+  "task_id": "task-8873feba07b8",
+  "repository": "ai-platform/agent-sandbox",
+  "base_sha": "5f1c2b3a4d5e6f708192a3b4c5d6e7f8091a2b3c",
+  "summary": "extra field not allowed",
+  "surprise": true
+}

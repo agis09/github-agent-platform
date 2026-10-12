@@ -1,0 +1,59 @@
+{
+  "$defs": {
+    "SearchHit": {
+      "additionalProperties": false,
+      "description": "One result returned by a provider. URLs are recorded for audit.",
+      "properties": {
+        "title": {
+          "maxLength": 512,
+          "title": "Title",
+          "type": "string"
+        },
+        "url": {
+          "maxLength": 2048,
+          "title": "Url",
+          "type": "string"
+        },
+        "snippet": {
+          "maxLength": 2048,
+          "title": "Snippet",
+          "type": "string"
+        }
+      },
+      "required": [
+        "title",
+        "url",
+        "snippet"
+      ],
+      "title": "SearchHit",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "description": "Provider response. The query echoes back for audit correlation.",
+  "properties": {
+    "query": {
+      "title": "Query",
+      "type": "string"
+    },
+    "hits": {
+      "default": [],
+      "items": {
+        "$ref": "#/$defs/SearchHit"
+      },
+      "title": "Hits",
+      "type": "array"
+    },
+    "provider": {
+      "title": "Provider",
+      "type": "string"
+    }
+  },
+  "required": [
+    "query",
+    "provider"
+  ],
+  "title": "SearchResult",
+  "type": "object",
+  "$schema": "https://json-schema.org/draft/2020-12/schema"
+}

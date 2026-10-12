@@ -1,0 +1,9 @@
+# Terraform working files and state: state contains secrets.
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfvars
+!*.tfvars.example
+crash.log
+.terraform.tfstate.lock.info
+*.env

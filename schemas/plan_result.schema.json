@@ -1,0 +1,114 @@
+{
+  "$defs": {
+    "ProposedChange": {
+      "additionalProperties": false,
+      "properties": {
+        "path": {
+          "minLength": 1,
+          "title": "Path",
+          "type": "string"
+        },
+        "reason": {
+          "title": "Reason",
+          "type": "string"
+        }
+      },
+      "required": [
+        "path",
+        "reason"
+      ],
+      "title": "ProposedChange",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "description": "Structured plan the adapter returns; matches schemas/plan_result.schema.json.\n\nThe adapter returns ``plan_hash`` empty (\"\"), the orchestrator recomputes\nit — adapter-supplied hashes are never trusted.",
+  "properties": {
+    "schema_version": {
+      "const": "1",
+      "default": "1",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "task_id": {
+      "minLength": 1,
+      "title": "Task Id",
+      "type": "string"
+    },
+    "repository": {
+      "minLength": 1,
+      "title": "Repository",
+      "type": "string"
+    },
+    "base_sha": {
+      "pattern": "^[0-9a-f]{40}$",
+      "title": "Base Sha",
+      "type": "string"
+    },
+    "summary": {
+      "maxLength": 10000,
+      "title": "Summary",
+      "type": "string"
+    },
+    "assumptions": {
+      "default": [],
+      "items": {
+        "type": "string"
+      },
+      "title": "Assumptions",
+      "type": "array"
+    },
+    "questions": {
+      "default": [],
+      "items": {
+        "type": "string"
+      },
+      "title": "Questions",
+      "type": "array"
+    },
+    "proposed_changes": {
+      "default": [],
+      "items": {
+        "$ref": "#/$defs/ProposedChange"
+      },
+      "title": "Proposed Changes",
+      "type": "array"
+    },
+    "test_commands": {
+      "default": [],
+      "items": {
+        "type": "string"
+      },
+      "title": "Test Commands",
+      "type": "array"
+    },
+    "risks": {
+      "default": [],
+      "items": {
+        "type": "string"
+      },
+      "title": "Risks",
+      "type": "array"
+    },
+    "requires_human_input": {
+      "default": false,
+      "title": "Requires Human Input",
+      "type": "boolean"
+    },
+    "plan_hash": {
+      "default": "",
+      "pattern": "^(sha256:[0-9a-f]{64})?$",
+      "title": "Plan Hash",
+      "type": "string"
+    }
+  },
+  "required": [
+    "task_id",
+    "repository",
+    "base_sha",
+    "summary"
+  ],
+  "title": "PlanResult",
+  "type": "object",
+  "$schema": "https://json-schema.org/draft/2020-12/schema"
+}

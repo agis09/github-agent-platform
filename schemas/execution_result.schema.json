@@ -1,0 +1,244 @@
+{
+  "$defs": {
+    "CommandRecord": {
+      "additionalProperties": false,
+      "description": "One audited command. Inline stdout/stderr are size-bounded excerpts\n(the sandbox has no remote artifact store); the *_ref fields point at\nfull captures once a remote store exists.",
+      "properties": {
+        "command": {
+          "title": "Command",
+          "type": "string"
+        },
+        "exit_code": {
+          "title": "Exit Code",
+          "type": "integer"
+        },
+        "duration_ms": {
+          "minimum": 0,
+          "title": "Duration Ms",
+          "type": "integer"
+        },
+        "stdout_ref": {
+          "anyOf": [
+            {
+              "pattern": "^artifact://[0-9a-f]{64}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Stdout Ref"
+        },
+        "stderr_ref": {
+          "anyOf": [
+            {
+              "pattern": "^artifact://[0-9a-f]{64}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Stderr Ref"
+        },
+        "stdout_text": {
+          "anyOf": [
+            {
+              "maxLength": 4096,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Stdout Text"
+        },
+        "stderr_text": {
+          "anyOf": [
+            {
+              "maxLength": 4096,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Stderr Text"
+        }
+      },
+      "required": [
+        "command",
+        "exit_code",
+        "duration_ms"
+      ],
+      "title": "CommandRecord",
+      "type": "object"
+    },
+    "TestResult": {
+      "additionalProperties": false,
+      "properties": {
+        "command": {
+          "title": "Command",
+          "type": "string"
+        },
+        "status": {
+          "enum": [
+            "passed",
+            "failed",
+            "skipped",
+            "error"
+          ],
+          "title": "Status",
+          "type": "string"
+        }
+      },
+      "required": [
+        "command",
+        "status"
+      ],
+      "title": "TestResult",
+      "type": "object"
+    },
+    "Violation": {
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "enum": [
+            "out_of_scope_path",
+            "forbidden_command",
+            "output_size",
+            "other"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "detail": {
+          "title": "Detail",
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind",
+        "detail"
+      ],
+      "title": "Violation",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "const": "1",
+      "default": "1",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "task_id": {
+      "title": "Task Id",
+      "type": "string"
+    },
+    "plan_hash": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Plan Hash",
+      "type": "string"
+    },
+    "base_sha": {
+      "pattern": "^[0-9a-f]{40}$",
+      "title": "Base Sha",
+      "type": "string"
+    },
+    "status": {
+      "enum": [
+        "succeeded",
+        "failed",
+        "timeout",
+        "cancelled"
+      ],
+      "title": "Status",
+      "type": "string"
+    },
+    "patch_ref": {
+      "anyOf": [
+        {
+          "pattern": "^artifact://[0-9a-f]{64}$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Patch Ref"
+    },
+    "changed_files": {
+      "default": [],
+      "items": {
+        "type": "string"
+      },
+      "title": "Changed Files",
+      "type": "array"
+    },
+    "commands": {
+      "default": [],
+      "items": {
+        "$ref": "#/$defs/CommandRecord"
+      },
+      "title": "Commands",
+      "type": "array"
+    },
+    "tests": {
+      "default": [],
+      "items": {
+        "$ref": "#/$defs/TestResult"
+      },
+      "title": "Tests",
+      "type": "array"
+    },
+    "agent_events_ref": {
+      "anyOf": [
+        {
+          "pattern": "^artifact://[0-9a-f]{64}$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Agent Events Ref"
+    },
+    "violations": {
+      "default": [],
+      "items": {
+        "$ref": "#/$defs/Violation"
+      },
+      "title": "Violations",
+      "type": "array"
+    },
+    "pr_body_draft": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Pr Body Draft"
+    }
+  },
+  "required": [
+    "task_id",
+    "plan_hash",
+    "base_sha",
+    "status"
+  ],
+  "title": "ExecutionResult",
+  "type": "object",
+  "$schema": "https://json-schema.org/draft/2020-12/schema"
+}

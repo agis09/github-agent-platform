@@ -1,0 +1,96 @@
+# Review Job: one-shot READ-ONLY sandbox. An independent agent context
+# reviews the base..head diff against the approved plan and prints the
+# ReviewResult between log markers (agent_platform.worker.review). No
+# workspace volume, no snapshot: the reviewer never modifies anything and
+# holds no credentials besides the LLM API key.
+#
+# Template placeholders ({{...}}) are filled by KubeJobLauncher.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: review-{{TASK_ID}}
+  namespace: {{NAMESPACE}}
+  labels:
+    app.kubernetes.io/part-of: agent-platform
+    agent-platform.role: review
+spec:
+  activeDeadlineSeconds: {{ACTIVE_DEADLINE_SECONDS}}
+  ttlSecondsAfterFinished: {{TTL_SECONDS}}
+  backoffLimit: 0
+  completionMode: NonIndexed
+  suspend: false
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/part-of: agent-platform
+        agent-platform.role: review
+        agent-platform.task: review-{{TASK_ID}}
+    spec:
+      restartPolicy: Never
+      serviceAccountName: worker
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        fsGroup: 10001
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: worker
+          image: {{WORKER_IMAGE}}
+          imagePullPolicy: IfNotPresent
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          command: ["python", "-m", "agent_platform.worker.review"]
+          env:
+            - name: REVIEW_TASK_ID
+              value: "{{TASK_ID}}"
+            - name: REVIEW_REPOSITORY
+              value: "{{REPOSITORY}}"
+            - name: REVIEW_PLAN_HASH
+              value: "{{PLAN_HASH}}"
+            - name: REVIEW_BASE_SHA
+              value: "{{BASE_SHA}}"
+            - name: REVIEW_HEAD_SHA
+              value: "{{HEAD_SHA}}"
+            - name: REVIEW_ISSUE_TITLE
+              value: "{{ISSUE_TITLE}}"
+            - name: REVIEW_ISSUE_BODY
+              value: "{{ISSUE_BODY}}"
+            - name: REVIEW_PLAN_JSON
+              value: "{{PLAN_JSON}}"
+            - name: REVIEW_DIFF
+              value: "{{REVIEW_DIFF}}"
+            - name: REVIEW_TESTS
+              value: "{{REVIEW_TESTS}}"
+            {{AGENT_ENV}}
+          resources:
+            requests:
+              cpu: "500m"
+              memory: "512Mi"
+              ephemeral-storage: "1Gi"
+            limits:
+              cpu: "2"
+              memory: "2Gi"
+              ephemeral-storage: "2Gi"
+          volumeMounts:
+            - name: scratch
+              mountPath: /tmp
+            - name: out
+              mountPath: /out
+            - name: home
+              mountPath: /home/worker
+      volumes:
+        - name: scratch
+          emptyDir:
+            sizeLimit: 1Gi
+        - name: out
+          emptyDir:
+            sizeLimit: 16Mi
+        - name: home
+          emptyDir:
+            sizeLimit: 256Mi

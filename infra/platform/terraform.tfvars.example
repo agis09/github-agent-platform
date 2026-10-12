@@ -1,0 +1,74 @@
+# Copy to terraform.tfvars (gitignored) and fill in. Secrets can instead be
+# exported as TF_VAR_<name> (see .env.example) so they never touch a file.
+
+# --- cluster ---
+kubeconfig_path    = "~/.kube/config"
+# kubeconfig_context = "my-cluster"
+namespace          = "agent-platform"
+
+# --- images (scripts/build-push.sh writes worker_image / egress_proxy_image
+#     into images.auto.tfvars) ---
+# Private registry (pull credentials for the nodes). The password is a
+# secret: put it in .env as TF_VAR_registry_password, not here.
+# registry_server   = "ghcr.io"
+# registry_username = "my-bot"
+
+# --- agent runtime / LLM (docs/usage.md §4) ---
+# The API key is NOT written here: export TF_VAR_agent_api_key (see .env.example).
+#
+# Sakura AI Engine (OpenAI-compatible Responses API) + Codex CLI:
+agent_runtime  = "codex"
+agent_base_url = "https://api.ai.sakura.ad.jp/v1"
+agent_model    = "gpt-oss-120b"
+#
+# Sakura AI Engine (Anthropic-compatible Messages API) + Claude Code:
+# agent_runtime     = "claude-code"
+# agent_base_url    = "https://api.ai.sakura.ad.jp"
+# agent_model       = "gpt-oss-120b"
+# agent_auth_scheme = "bearer"
+#
+# OpenAI API + Codex CLI:
+# agent_runtime = "codex"
+# agent_model   = "gpt-5-codex"
+#
+# Anthropic API + Claude Code:
+# agent_runtime = "claude-code"
+# agent_model   = "claude-sonnet-5-5"
+#
+# Self-hosted OpenAI-compatible endpoint (vLLM, LiteLLM, ...):
+# agent_base_url   = "https://llm.example.com/v1"
+# llm_egress_cidrs = ["203.0.113.10/32"]
+
+# --- GitHub Apps ---
+github_api_url          = "https://api.github.com"   # GHES: https://ghes.example.com/api/v3
+reader_app_id           = "123456"
+reader_installation_id  = "12345678"
+reader_private_key_path = "~/.config/agent-platform/reader.pem"
+# Separate write App (recommended). Leave empty to use one App for both.
+publisher_app_id           = "234567"
+publisher_installation_id  = "23456789"
+publisher_private_key_path = "~/.config/agent-platform/publisher.pem"
+# webhook_secret = "..."               # TF_VAR_webhook_secret recommended
+
+webhook_config = {
+  trigger       = "comment"
+  kicker_policy = "collaborator"
+  approvers     = []
+  auto_pipeline = true
+}
+webhook_service_type = "ClusterIP"   # NodePort / LoadBalancer, or front it with your Ingress
+
+# --- execute sandbox ---
+snapshot_configmap = ""               # scripts/create-snapshot.sh prints the name
+egress_level       = "none"           # none | allowlist | full
+# egress_allowed_hosts = ["pypi.org", "files.pythonhosted.org"]
+
+# --- web search (disabled by default; docs/usage.md §5) ---
+search_provider = "none"              # none | fake | brave | http-json
+# search_provider_url = "https://search.example.com/api"   # http-json only
+# search_api_key      = "..."          # TF_VAR_search_api_key recommended
+
+# --- storage ---
+# state_storage_class = "standard"
+# s3 = { endpoint = "https://s3.example.com", bucket = "agent-artifacts",
+#        access_key_id = "...", secret_access_key = "..." }

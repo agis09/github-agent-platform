@@ -1,0 +1,20 @@
+# Local cluster for trying the platform end to end.
+#   kind create cluster --name agent-platform --config infra/clusters/kind/kind-config.yaml
+#
+# The default CNI is disabled so Calico can enforce the platform's
+# NetworkPolicies (the sandbox boundary). Install it right after creation:
+#   kubectl apply -f https://raw.githubusercontent.com/projectcalico/calico/v3.29.1/manifests/calico.yaml
+kind: Cluster
+apiVersion: kind.x-k8s.io/v1alpha4
+networking:
+  disableDefaultCNI: true
+  podSubnet: 192.168.0.0/16
+nodes:
+  - role: control-plane
+    # Webhook receiver: set webhook_service_type = "NodePort" and
+    # webhook_node_port = 30080 in infra/platform; GitHub then needs a
+    # public tunnel to localhost:8080 (e.g. a reverse proxy / tunnel service).
+    extraPortMappings:
+      - containerPort: 30080
+        hostPort: 8080
+        protocol: TCP

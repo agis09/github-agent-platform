@@ -1,0 +1,27 @@
+{
+  "additionalProperties": false,
+  "description": "Search Gateway request body (worker -> gateway). The gateway\nre-runs the sanitizer with forbidden_tokens; it does not trust the\nworker-side check. Bounds keep one request small.",
+  "properties": {
+    "query": {
+      "maxLength": 512,
+      "minLength": 1,
+      "title": "Query",
+      "type": "string"
+    },
+    "forbidden_tokens": {
+      "default": [],
+      "items": {
+        "type": "string"
+      },
+      "maxItems": 256,
+      "title": "Forbidden Tokens",
+      "type": "array"
+    }
+  },
+  "required": [
+    "query"
+  ],
+  "title": "GatewaySearchRequest",
+  "type": "object",
+  "$schema": "https://json-schema.org/draft/2020-12/schema"
+}
