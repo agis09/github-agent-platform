@@ -10,6 +10,13 @@ locals {
   ssh_private_key = file(pathexpand(var.admin_private_key_path))
   router_ip       = sakuracloud_vpc_router.this.public_ip
 
+  # sudo on this archive asks for the user's password (the console
+  # password written by the disk edit). Use it once to give the key-only
+  # user ubuntu passwordless sudo, as on cloud images; the k3s installer
+  # and scripts/fetch-kubeconfig.sh rely on it. Without this every sudo
+  # waits for a password prompt that never comes.
+  passwordless_sudo = "echo '${random_password.console.result}' | sudo -S -p '' sh -c 'echo \"ubuntu ALL=(ALL) NOPASSWD:ALL\" > /etc/sudoers.d/90-agent-platform && chmod 0440 /etc/sudoers.d/90-agent-platform'"
+
   # Wait until the node has its DHCP lease and NAT egress works.
   wait_for_network = "until curl -sfI --max-time 10 https://get.k3s.io >/dev/null; do echo 'waiting for network'; sleep 5; done"
 }
@@ -29,6 +36,7 @@ resource "terraform_data" "k3s_server" {
   provisioner "remote-exec" {
     inline = [
       "set -eu",
+      local.passwordless_sudo,
       local.wait_for_network,
       "sudo hostnamectl set-hostname k3s-${local.server_name}",
       "grep -q 'k3s-${local.server_name}' /etc/hosts || echo '127.0.1.1 k3s-${local.server_name}' | sudo tee -a /etc/hosts >/dev/null",
@@ -63,6 +71,7 @@ resource "terraform_data" "k3s_agent" {
   provisioner "remote-exec" {
     inline = [
       "set -eu",
+      local.passwordless_sudo,
       local.wait_for_network,
       "sudo hostnamectl set-hostname k3s-${each.key}",
       "grep -q 'k3s-${each.key}' /etc/hosts || echo '127.0.1.1 k3s-${each.key}' | sudo tee -a /etc/hosts >/dev/null",

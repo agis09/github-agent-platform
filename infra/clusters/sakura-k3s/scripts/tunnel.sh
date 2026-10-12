@@ -5,7 +5,9 @@
 # or apply infra/platform.
 #
 # Usage: infra/clusters/sakura-k3s/scripts/tunnel.sh
-# Env (optional): ROUTER_IP, SSH_PORT (2222), SSH_KEY (private key path)
+# Env (optional): ROUTER_IP, SSH_PORT (2222), SSH_KEY (private key path),
+#   KNOWN_HOSTS (default ~/.config/agent-platform/known_hosts-sakura-k3s,
+#   written by fetch-kubeconfig.sh after the k3s install)
 set -eu
 
 TFDIR="$(cd "$(dirname "$0")/.." && pwd)"
@@ -15,7 +17,9 @@ if [ -z "$ROUTER" ]; then
   echo "router IP not found: apply $TFDIR first or set ROUTER_IP" >&2
   exit 1
 fi
-set -- -o ServerAliveInterval=30 -o ServerAliveCountMax=4 -o StrictHostKeyChecking=accept-new
+KNOWN_HOSTS="${KNOWN_HOSTS:-$HOME/.config/agent-platform/known_hosts-sakura-k3s}"
+set -- -o ServerAliveInterval=30 -o ServerAliveCountMax=4 \
+  -o UserKnownHostsFile="$KNOWN_HOSTS" -o StrictHostKeyChecking=accept-new
 if [ -n "${SSH_KEY:-}" ]; then
   set -- "$@" -i "$SSH_KEY"
 fi
