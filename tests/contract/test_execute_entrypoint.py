@@ -36,7 +36,7 @@ def _git(repo: Path, *args: str) -> str:
 
 
 def _run(tmp_path: Path, *, edits: str, exit_code: int = 0, allowed: str = "app.py",
-         tests: str = ""):
+         tests: str = "", extra_env: dict[str, str] | None = None):
     repo = tmp_path / "repo"
     repo.mkdir()
     (repo / "app.py").write_text("print('v1')\n")
@@ -65,12 +65,15 @@ def _run(tmp_path: Path, *, edits: str, exit_code: int = 0, allowed: str = "app.
         "EXEC_BASE_SHA": base_sha,
         "EXEC_ALLOWED_PATHS": allowed,
         "EXEC_TEST_COMMANDS": tests,
+        **(extra_env or {}),
     }
     proc = subprocess.run(  # noqa: S603
         [sys.executable, "-m", "agent_platform.worker.execute"],
         env=env, capture_output=True, text=True, timeout=60, check=False,
     )
     result_path = out / "execution_result.json"
+    if extra_env and "KUBERNETES_SERVICE_HOST" in extra_env:
+        return proc, None, None
     assert result_path.exists(), proc.stderr
     return proc, json.loads(result_path.read_text()), (out / "patch.diff").read_text()
 
@@ -126,3 +129,31 @@ def test_user_installed_tools_are_on_path(tmp_path):
                            tests="p18-user-tool")
     assert proc.returncode == 0, proc.stderr
     assert result["tests"] == [{"command": "p18-user-tool", "status": "passed"}]
+
+
+@pytest.mark.skipif(os.name != "posix", reason="POSIX fake agent script")
+def test_agent_never_runs_while_egress_is_open(tmp_path):
+    """If the sandbox egress policy is not in force (the probe target is
+    reachable), the runner stops before the agent: no edits, no result."""
+    import socket
+
+    listener = socket.socket()
+    listener.bind(("127.0.0.1", 0))
+    listener.listen(16)
+    port = listener.getsockname()[1]
+    try:
+        proc, result, _ = _run(
+            tmp_path,
+            edits="echo \"print('v2')\" > app.py\n",
+            extra_env={
+                "KUBERNETES_SERVICE_HOST": "127.0.0.1",
+                "KUBERNETES_SERVICE_PORT": str(port),
+                "AGENT_PLATFORM_NETWORK_GUARD_SECONDS": "1",
+            },
+        )
+    finally:
+        listener.close()
+    assert proc.returncode == 1
+    assert "Refusing to run the agent" in proc.stderr
+    assert not (tmp_path / "out" / "execution_result.json").exists()
+    assert (tmp_path / "repo" / "app.py").read_text() == "print('v1')\n"

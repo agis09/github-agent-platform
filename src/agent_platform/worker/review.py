@@ -21,9 +21,10 @@ from pathlib import Path
 
 from agent_platform.agent_runtime import RunMode, build_runtime
 from agent_platform.config import Settings
-from agent_platform.errors import AdapterError
+from agent_platform.errors import AgentPlatformError
 from agent_platform.prompt_builder import build_review_prompt
 from agent_platform.schema_export import schema_file
+from agent_platform.worker.network_guard import wait_for_egress_policy
 
 
 def main() -> int:
@@ -37,10 +38,11 @@ def main() -> int:
         tests=os.environ.get("REVIEW_TESTS", ""),
     )
     try:
+        print(f"runner: {wait_for_egress_policy()}", file=sys.stderr)
         outcome = runtime.run(
             prompt=prompt, mode=RunMode.READ_ONLY, output_schema=schema_file("review_result")
         )
-    except AdapterError as exc:
+    except AgentPlatformError as exc:
         print(f"runner: {exc}", file=sys.stderr)
         return 1
     print(f"runner: {outcome.audit_line()}", file=sys.stderr)

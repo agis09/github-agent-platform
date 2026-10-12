@@ -162,6 +162,7 @@ AI Engine の詳細は [usage.md「AI エージェントと LLM を選ぶ」](./
 | `AGENT_PLATFORM_K8S_TTL_SECONDS` | `600` | 完了 Job の TTL |
 | `AGENT_PLATFORM_K8S_SNAPSHOT_CONFIGMAP` | — | リポジトリスナップショットの ConfigMap |
 | `AGENT_PLATFORM_K8S_REVIEW_ENABLED` | — | `1` で Review Job を有効化 |
+| `AGENT_PLATFORM_NETWORK_GUARD_SECONDS` | `30` | Job 内のワーカーが、NetworkPolicy の適用（Kubernetes API に接続できなくなること）を待つ上限秒数。超えるとエージェントを起動せずに失敗する。`0` で無効 |
 | `AGENT_PLATFORM_EXECUTE_COMMAND_TIMEOUT` | `120` | テストコマンド 1 つの上限秒数 |
 | `AGENT_PLATFORM_EXECUTE_MAX_OUTPUT` | `1048576` | patch の上限バイト数 |
 | `AGENT_PLATFORM_EGRESS_LEVEL` / `_PROXY_URL` / `_ALLOWED_HOSTS` | `none` | egress レベル（Terraform と一致させる。不整合は起動時エラー） |
