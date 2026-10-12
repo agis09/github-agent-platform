@@ -391,20 +391,29 @@ set -a; . ../../.env; set +a
 
 ### 8.2 リポジトリスナップショットを作る
 
-Execute Job は、対象リポジトリの git bundle を格納した ConfigMap を展開して作業します（[既知の制約](./design.md#15-既知の制約)）。namespace を先に作るため、初回は 2 段階で apply します。
+Execute Job は、対象リポジトリの git bundle を格納した ConfigMap を展開して作業します（[既知の制約](./design.md#15-既知の制約)）。ConfigMap は namespace の中に作るため、初回は 2 段階で apply します。
 
 ```bash
+# 1. namespace だけ先に作る（infra/platform で実行）
+cd infra/platform
 terraform init
 terraform apply -target=kubernetes_namespace_v1.this
+cd ../..
 
+# 2. スナップショットを作る（リポジトリ直下で実行）
+export KUBECONFIG=~/.kube/config     # infra/platform の kubeconfig_path と同じファイル
+kubectl get namespace agent-platform  # 接続先と namespace の確認
 git clone https://github.com/<owner>/<repo> /tmp/target-repo
 scripts/create-snapshot.sh /tmp/target-repo main agent-platform   # → repo-snapshot-<sha12> を表示
-# terraform.tfvars に snapshot_configmap = "repo-snapshot-<sha12>" を設定
+# infra/platform/terraform.tfvars に snapshot_configmap = "repo-snapshot-<sha12>" を設定
 
-terraform apply
+# 3. 本体一式を作る
+cd infra/platform && terraform apply
 ```
 
-対象リポジトリに新しいコミットが入ったら、スナップショットを作り直して `snapshot_configmap` を更新してください（Execute は承認時の base SHA を checkout するため、bundle にその SHA が含まれている必要があります）。
+- `create-snapshot.sh` は `kubectl` で ConfigMap を作ります。Terraform の `kubeconfig_path` は `kubectl` には効かないため、**`KUBECONFIG` を対象クラスタの kubeconfig に向けてから** 実行してください。向いていない場合（`~/.kube/config` が空など）、`kubectl` は `http://localhost:8080` に接続しようとして失敗します。スクリプトは最初に接続先と namespace を確認し、原因を表示して止まります。
+- さくらのクラウド k3s 例では `KUBECONFIG=~/.config/agent-platform/kubeconfig-sakura-k3s.yaml` を使い、SSH トンネル（`infra/clusters/sakura-k3s/scripts/tunnel.sh`）を起動しておきます。
+- 対象リポジトリに新しいコミットが入ったら、スナップショットを作り直して `snapshot_configmap` を更新してください（Execute は承認時の base SHA を checkout するため、bundle にその SHA が含まれている必要があります）。
 
 ### 8.3 webhook を公開する
 
