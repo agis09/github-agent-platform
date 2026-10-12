@@ -37,7 +37,8 @@ from typing import Any
 
 from agent_platform.agent_runtime import RunMode, build_runtime
 from agent_platform.config import Settings
-from agent_platform.errors import AdapterError, AdapterTimeoutError
+from agent_platform.errors import AdapterError, AdapterTimeoutError, AgentPlatformError
+from agent_platform.worker.network_guard import wait_for_egress_policy
 
 # Interpreter by-products are never part of a plan: an agent validating its
 # work by running Python drops __pycache__/*.pyc next to the sources. They
@@ -80,7 +81,13 @@ def main() -> int:
         print(f"runner: snapshot HEAD {head!r} != base_sha {base_sha!r}", file=sys.stderr)
         return 1
 
-    # 1. Run the agent over the snapshot (write mode; the Pod is the sandbox).
+    # 1. Run the agent over the snapshot (write mode; the Pod is the sandbox),
+    #    but only once the sandbox egress policy is in force.
+    try:
+        print(f"runner: {wait_for_egress_policy()}", file=sys.stderr)
+    except AgentPlatformError as exc:
+        print(f"runner: {exc}", file=sys.stderr)
+        return 1
     try:
         outcome = runtime.run(
             prompt=os.environ.get("EXEC_PROMPT", ""), mode=RunMode.WRITE, cwd=repo

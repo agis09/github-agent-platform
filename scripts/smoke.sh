@@ -22,11 +22,13 @@ kubectl -n "$NS" exec deploy/orchestrator -- python -c \
 
 probe() {
   # probe <name> <host>: TCP connect to <host>:443 from a pod labelled like
-  # an agent Job; prints "open" or "blocked".
+  # an agent Job; prints "open" or "blocked". It waits a few seconds first:
+  # some CNIs (k3s's kube-router) apply a new pod's policy just after the
+  # pod starts, and the workers wait for that too (worker/network_guard.py).
   kubectl -n "$NS" run "$1" --rm -i --restart=Never --quiet \
     --image="$WORKER_IMAGE" \
     --labels="app.kubernetes.io/part-of=agent-platform,agent-platform.role=smoke" \
-    --overrides='{"spec":{"serviceAccountName":"worker","automountServiceAccountToken":false,"securityContext":{"runAsNonRoot":true,"runAsUser":10001,"seccompProfile":{"type":"RuntimeDefault"}},"containers":[{"name":"'"$1"'","image":"'"$WORKER_IMAGE"'","command":["python","-c","import socket,sys\ntry:\n socket.create_connection((sys.argv[1],443),timeout=5); print(\"open\")\nexcept OSError: print(\"blocked\")","'"$2"'"],"securityContext":{"allowPrivilegeEscalation":false,"readOnlyRootFilesystem":true,"capabilities":{"drop":["ALL"]}}}]}}'
+    --overrides='{"spec":{"serviceAccountName":"worker","automountServiceAccountToken":false,"securityContext":{"runAsNonRoot":true,"runAsUser":10001,"seccompProfile":{"type":"RuntimeDefault"}},"containers":[{"name":"'"$1"'","image":"'"$WORKER_IMAGE"'","command":["python","-c","import socket,sys,time\ntime.sleep(5)\ntry:\n socket.create_connection((sys.argv[1],443),timeout=5); print(\"open\")\nexcept OSError: print(\"blocked\")","'"$2"'"],"securityContext":{"allowPrivilegeEscalation":false,"readOnlyRootFilesystem":true,"capabilities":{"drop":["ALL"]}}}]}}'
 }
 
 echo "=== 2. model endpoint ($LLM_HOST) ==="

@@ -1,6 +1,6 @@
 # さくらのクラウド k3s クラスタ（構築例）
 
-さくらのクラウド上に、グローバル IP を持たない k3s クラスタ（server 1 + agent 2）を作る例です。プラットフォーム本体のデプロイは [`infra/platform`](../../platform/) で行います。
+さくらのクラウド上に、グローバル IP を持たない k3s クラスタ（server 1 + agent 2）を **`terraform apply` 1 回** で作る例です。プラットフォーム本体のデプロイは [`infra/platform`](../../platform/) で行います。
 
 ```
 VPC ルータ（グローバル IP、NAT）
@@ -12,90 +12,96 @@ VPC ルータ（グローバル IP、NAT）
        └─ agent-2  .13
 ```
 
+Terraform が行うこと:
+
+1. スイッチ、SSH 鍵、ディスク、サーバを作成。SSH 鍵はディスクの修正機能でサーバ作成時に書き込みます（このアーカイブには cloud-init がないため）。
+2. VPC ルータを作成。DHCP で各サーバの MAC アドレスに IP を固定し、ポート転送を設定します。
+3. SSH で k3s をインストール。server にはルータのポート転送経由で、agent には server を踏み台にして接続します。
+4. kubeconfig を手元に取得（`~/.config/agent-platform/kubeconfig-sakura-k3s.yaml`、0600）。
+5. コンテナレジストリを作成（任意）。
+
 k3s 同梱の kube-router が NetworkPolicy を強制し、local-path-provisioner が既定の StorageClass になります。
 
 ## 前提
 
-- Terraform 1.9+、[usacloud](https://github.com/sacloud/usacloud)、SSH 鍵
-- API キー（**対象プロジェクトに紐づくもの**）を環境変数で渡す。ファイルに書いてリポジトリに置かないこと
+- Terraform 1.9+
+- このクラスタ専用の SSH 鍵ペア。Terraform が SSH で k3s をインストールするため、**パスフレーズなし** で作成します（パスフレーズ付きの鍵は remote-exec で使えません）。
+  ```bash
+  ssh-keygen -t ed25519 -N "" -C "agent-platform sakura-k3s" -f ~/.ssh/agent-platform
+  ```
+- さくらのクラウドの API キー（**対象プロジェクトに紐づくもの**）。リポジトリ直下の `.env` に書きます（gitignore 済み）。
 
 ```bash
-export SAKURACLOUD_ACCESS_TOKEN=...
-export SAKURACLOUD_ACCESS_TOKEN_SECRET=...
+# .env
+SAKURACLOUD_ACCESS_TOKEN=...
+SAKURACLOUD_ACCESS_TOKEN_SECRET=...
 ```
 
 ## 手順
 
-### 1. ネットワークとサーバ
+### 1. 設定
 
 ```bash
 cd infra/clusters/sakura-k3s
-cat > terraform.tfvars <<EOT                 # gitignore 済み
-admin_public_key   = "$(cat ~/.ssh/id_ed25519.pub)"
-registry_subdomain = "<全 sakuracr.jp で一意なラベル>"   # レジストリ不要なら省略
+cat > terraform.tfvars <<EOT                       # gitignore 済み
+admin_public_key       = "$(cat ~/.ssh/agent-platform.pub)"
+admin_private_key_path = "~/.ssh/agent-platform"
+registry_subdomain     = "<全 sakuracr.jp で一意なラベル>"   # レジストリ不要なら省略
 EOT
+```
+
+ノード構成（台数・スペック）、ゾーン、ポートなどは `variables.tf` を参照してください。
+
+### 2. 作成
+
+```bash
+set -a; . ../../../.env; set +a
 terraform init
 terraform apply
 ```
 
-### 2. ノードの SSH 鍵（帯域外の手順）
+サーバの起動と k3s のインストールに 10〜20 分ほどかかります。完了すると kubeconfig が書き込まれます。
 
-この例が使う Ubuntu のパブリックアーカイブには cloud-init が無いため、SSH 鍵はディスク作成時の「ディスクの修正」で書き込みます。terraform の disk リソースはこの API を公開していないため、usacloud で作成して import します。
+### 3. kubectl の接続
+
+API サーバは公開していないため、SSH トンネルを張って使います。kubectl や `infra/platform` の Terraform を使う間は、トンネルを起動したままにしてください。
+
+`kubectl` とスクリプトの接続先は環境変数 `KUBECONFIG` で決まります（`infra/platform` の `kubeconfig_path` は `kubectl` には効きません）。新しいシェルでも使えるように、リポジトリ直下の `.env` に書いておきます。
 
 ```bash
-# 各ノードについて（terraform が作ったディスクを置き換える場合は先に削除）
-usacloud disk create -y --zone is1a --name agent-platform-disk-server \
-  --disk-plan ssd --connector virtio --size 20 --os-type ubuntu2404 \
-  --edit-disk-ssh-key-ids <terraform が登録した SSH 鍵の ID>
-terraform import 'sakuracloud_disk.nodes["server"]' <disk id>
+# .env
+KUBECONFIG=$HOME/.config/agent-platform/kubeconfig-sakura-k3s.yaml
 ```
 
-> ホスト名を「ディスクの修正」で指定するとこのアーカイブでは起動しなくなります。ホスト名は k3s インストール時に設定してください。
-
-### 3. ノードの IP 固定
-
 ```bash
-terraform output node_macs          # 小文字の MAC
-# terraform.tfvars に node_macs = { server = "9c:a3:...", agent-1 = "...", agent-2 = "..." } を追加
-terraform apply
+SSH_KEY=~/.ssh/agent-platform scripts/tunnel.sh &      # 127.0.0.1:16443 → API サーバ（terraform output tunnel_command と同じ）
+set -a; . ../../../.env; set +a                    # KUBECONFIG を読み込む
+kubectl get nodes                                  # 3 台が Ready
 ```
 
-### 4. k3s のインストール
+### 4. イメージとプラットフォーム
 
 ```bash
-terraform output -json k3s_install   # 各ノードで実行するコマンド（join token を含む。扱いに注意）
-ssh -p 2222 ubuntu@$(terraform output -raw router_global_ip)          # server
-# agent へは server を踏み台にする: ssh -J ubuntu@<router>:2222 ubuntu@192.168.10.12
-```
-
-各ノードでホスト名を一意にしてから（`sudo hostnamectl set-hostname k3s-agent-1` など）、server → agent の順に出力されたコマンドを実行します。
-
-### 5. kubectl の接続
-
-```bash
-scripts/tunnel.sh &                  # 127.0.0.1:16443 → API サーバ
-scripts/fetch-kubeconfig.sh          # ~/.config/agent-platform/kubeconfig-sakura-k3s.yaml
-export KUBECONFIG=~/.config/agent-platform/kubeconfig-sakura-k3s.yaml
-kubectl get nodes
-```
-
-### 6. イメージとプラットフォーム
-
-```bash
-docker login $(terraform output -raw registry_fqdn) -u push    # パスワード: terraform output -raw registry_password
+docker login "$(terraform output -raw registry_fqdn)" -u push   # パスワード: terraform output -raw registry_password
 REGISTRY=$(terraform output -raw registry_fqdn) ../../../scripts/build-push.sh
 ```
 
-`infra/platform/terraform.tfvars` の例:
+次に [`infra/platform`](../../platform/) でプラットフォーム本体をデプロイします（[docs/usage.md §8](../../../docs/usage.md#8-プラットフォームをデプロイする)）。このクラスタを使うには、`infra/platform/terraform.tfvars` に **次の設定が必須** です（`terraform.tfvars.example` の既定値のままでは動きません）。
 
 ```hcl
 kubeconfig_path      = "~/.config/agent-platform/kubeconfig-sakura-k3s.yaml"
-registry_server      = "<registry_fqdn>"
+registry_server      = "<label>.sakuracr.jp"      # terraform output -raw registry_fqdn
 registry_username    = "push"
-# registry_password は TF_VAR_registry_password で
 webhook_service_type = "NodePort"
 webhook_node_port    = 30080
 ```
+
+| 設定 | 理由 |
+|---|---|
+| `kubeconfig_path` | この Terraform が書き出した kubeconfig。既定の `~/.kube/config` のままだと接続先がなく、`dial tcp [::1]:80: connect: connection refused` で失敗します。トンネル（`scripts/tunnel.sh`）も起動しておきます |
+| `registry_server` | ノードがイメージを pull するための Secret のキー。**ホスト名だけ**（`https://` やパスは付けない）を書き、`images.auto.tfvars` の `worker_image` のホスト部分と一致させます。食い違うと Terraform の検証エラーになります |
+| `registry_username` / `TF_VAR_registry_password` | この Terraform が作ったレジストリなら `push` と `terraform output -raw registry_password`（パスワードは `.env` に書きます）。別に作ったレジストリを使う場合は、そのホスト・ユーザー・パスワードを指定します |
+| `webhook_service_type` / `webhook_node_port` | VPC ルータはグローバル IP の 8080 番を server の 30080 番に転送します。Orchestrator の Service をこの番号の NodePort にします（`webhook_public_port` / `webhook_node_port` を変えた場合はその値） |
 
 LLM には同じさくらのクラウドの AI Engine が使えます（`agent_base_url = "https://api.ai.sakura.ad.jp/v1"`、[docs/usage.md §4](../../../docs/usage.md#4-ai-エージェントと-llm-を選ぶ)）。
 
@@ -106,19 +112,23 @@ GitHub App の Webhook URL には `terraform output -raw webhook_url` を設定�
 ```bash
 (cd ../../platform && terraform destroy)
 terraform destroy
+rm -f ~/.config/agent-platform/kubeconfig-sakura-k3s.yaml
 ```
 
-`terraform destroy` 後にディスクが残ることがあります（usacloud で作成し import していないもの、サーバから外れた状態のもの）。確認して手動で削除してください。
+`terraform destroy` の後、ディスクが残っていないかコントロールパネル（または `usacloud disk list`）で確認してください。コンテナレジストリのサブドメインは、削除後もしばらく予約されたままになります。
 
-```bash
-usacloud disk list --zone is1a | jq '[.[] | select(.Name | startswith("agent-platform"))]'
-```
+## トラブルシューティング
 
-コンテナレジストリのサブドメインは削除後もしばらく予約されたままになります。
-
-ローカルに残るファイル（kubeconfig など）も削除してください: `~/.config/agent-platform/kubeconfig-sakura-k3s.yaml`
+| 症状 | 確認すること |
+|---|---|
+| `remote-exec` が SSH 接続を待ち続ける | サーバの起動とルータの DHCP の完了を待っています（最大 20 分）。タイムアウトする場合は、コントロールパネルのコンソールで、ノードが `192.168.10.x` を取得しているか確認します（ユーザー `ubuntu`、パスワードは `terraform output -raw console_password`） |
+| `waiting for network` が続く | ノードから外部に出られていません。ルータの NAT と DNS（`dns_servers`）を確認してください |
+| k3s のインストールが途中で失敗した | `terraform apply` を再実行すると、失敗したステップからやり直します |
+| `409 limit_count_in_zone` | ゾーンのリソース上限（スイッチ数など）に達しています。別のゾーンを使うか、既存リソースを解放してください |
+| kubectl / `infra/platform` が `connection refused`（127.0.0.1:16443） | トンネル（`scripts/tunnel.sh`）が起動していません |
+| 手動の `ssh` で `REMOTE HOST IDENTIFICATION HAS CHANGED` | クラスタの再構築や、以前使われたグローバル IP がルータに割り当てられた場合に、`~/.ssh/known_hosts` の古いホスト鍵と食い違います。このクラスタのホスト鍵は `~/.config/agent-platform/known_hosts-sakura-k3s` で管理しているので、`terraform output -raw ssh_command`（このファイルを使う）で接続してください |
 
 ## 制約
 
-- ゾーンのリソース上限（スイッチ数など）はアカウントによります。409 `limit_count_in_zone` が出たら別ゾーンを使うか既存リソースを解放してください。
 - この構成の VPC ルータはファイアウォールを無効にしています（このアーカイブとルータの組み合わせで、有効時にポート転送が機能しなかったため）。公開されるのは SSH（鍵認証のみ）と webhook ポートだけです。
+- k3s の join token は、インストール時のコマンドとしてノード上で一時的に参照されます。Terraform の state には（`random_password` として）保存されるため、state は保護された場所に置いてください。

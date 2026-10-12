@@ -19,6 +19,7 @@ from agent_platform.adapters.agent.local import LocalAgentAdapter
 from agent_platform.config import Settings
 from agent_platform.domain.models import PlanJobSpec
 from agent_platform.errors import AgentPlatformError
+from agent_platform.worker.network_guard import wait_for_egress_policy
 
 
 def main() -> int:
@@ -35,6 +36,7 @@ def main() -> int:
     )
     adapter = LocalAgentAdapter(settings, repo_root=repo_root if repo_root.exists() else None)
     try:
+        print(f"worker: {wait_for_egress_policy()}", file=sys.stderr)
         plan = adapter.plan(spec)
     except AgentPlatformError as exc:
         print(f"worker: plan failed: {exc}", file=sys.stderr)

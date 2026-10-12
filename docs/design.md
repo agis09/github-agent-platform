@@ -177,6 +177,8 @@ class AgentRuntime(Protocol):
 | 出力 | PlanResult | ExecutionResult + patch | ReviewResult |
 | ワークスペース | なし | `/workspace/repo`（init container がスナップショットを展開） | なし |
 
+**NetworkPolicy の適用待ち**: CNI によっては（k3s 同梱の kube-router など）、新しい Pod のポリシーが Pod の起動より少し遅れて適用されます（k3s で約 1 秒、その間は通信が無制限）。各ワーカーはエージェントを起動する前に、どの egress レベルでも遮断されるはずの宛先（Kubernetes API の Service）に接続できなくなるまで待ちます。既定 30 秒以内に遮断されなければ、エージェントを起動せずに失敗します（fail-closed。`AGENT_PLATFORM_NETWORK_GUARD_SECONDS`）。
+
 全 Job 共通のセキュリティ設定: `runAsNonRoot`（uid 10001）、`readOnlyRootFilesystem`、`capabilities.drop: [ALL]`、`seccompProfile: RuntimeDefault`、`allowPrivilegeEscalation: false`、`automountServiceAccountToken: false`、CPU / メモリ / ephemeral-storage の limit、`activeDeadlineSeconds`、`ttlSecondsAfterFinished`、`backoffLimit: 0`。書き込み可能なのは emptyDir の `/tmp`・`/out`・`/home/worker`・`/workspace` のみです。
 
 **Execute Job の処理**（`worker/execute.py`）

@@ -75,6 +75,8 @@ uv run agentctl plan --repo <owner>/<repo> --issue <番号>
 | ローカル（`agentctl` を手元で実行） | `.env` の `LLM_API_KEY` など | `.env` の `AGENT_PLATFORM_*` | `set -a; . ./.env; set +a` |
 | クラウド（Kubernetes にデプロイ） | `.env` の `TF_VAR_agent_api_key` など | `infra/platform/terraform.tfvars` | `.env` を読み込んだシェルで `terraform apply` |
 
+クラウドの場合は、`kubectl` とスクリプトが使う接続先 `KUBECONFIG` も `.env` に書きます（[7.1](#71-kubectl-の接続先kubeconfig)）。secret ではありませんが、シェルの環境変数なので `.env` でまとめて読み込みます。
+
 `.env` の作り方:
 
 ```bash
@@ -84,7 +86,7 @@ $EDITOR .env
 set -a; . ./.env; set +a  # 現在のシェルに export する
 ```
 
-- `.env` を自動で読むツールはありません。`terraform` や `agentctl` を実行するシェルで毎回読み込んでください。
+- `.env` を自動で読むツールはありません。`terraform`・`kubectl`・`scripts/*.sh`・`agentctl` を実行するシェルで、毎回（新しいシェルを開くたびに）読み込んでください。
 - Terraform は `TF_VAR_<変数名>` という環境変数を、同じ名前の Terraform 変数として扱います（例: `TF_VAR_agent_api_key` → `agent_api_key`）。
 - クラウドにデプロイした場合、アプリケーションの環境変数（`AGENT_PLATFORM_*`）は Terraform が Kubernetes の Secret に書き込み、Orchestrator と Job に渡します。利用者が直接設定する必要はありません。
 - 変数の一覧と、Terraform 変数と環境変数の対応は [configuration.md](./configuration.md) を参照してください。
@@ -279,6 +281,8 @@ API キーは Secret `search-api-key` に保存され、**Search Gateway の Pod
 
 ### 動作確認（デプロイ後）
 
+以下の `kubectl` は、`KUBECONFIG` が対象クラスタを指していることが前提です（[7.1](#71-kubectl-の接続先kubeconfig)）。
+
 ```bash
 NS=agent-platform
 # 1. Gateway が起動しているか
@@ -338,9 +342,11 @@ REGISTRY=<registry>/<namespace> INSTALL_CLAUDE_CODE=true CLAUDE_CODE_VERSION=<ex
 
 | 値 | 置き場所 |
 |---|---|
-| `registry_server`（例: `ghcr.io`） | `infra/platform/terraform.tfvars` |
+| `registry_server`（例: `ghcr.io`、`<label>.sakuracr.jp`） | `infra/platform/terraform.tfvars` |
 | `registry_username` | `infra/platform/terraform.tfvars` |
 | `registry_password`（パスワード / トークン） | `.env` の `TF_VAR_registry_password` |
+
+`registry_server` には **ホスト名だけ**（`https://` やパスは付けない）を書き、`images.auto.tfvars` の `worker_image` のホスト部分と一致させてください。食い違っていると、Terraform の検証エラーになります（ノードが認証情報なしで pull しようとして `ImagePullBackOff` になるのを防ぐため）。
 
 公開レジストリの場合や、ノード自身に pull 権限がある場合（EKS ノードの IAM ロールで ECR、GKE ノードのサービスアカウントで Artifact Registry など）は設定不要です（`registry_server` を空のまま）。pull 専用（読み取り専用）のユーザー / トークンを使うことを推奨します。
 
@@ -352,8 +358,30 @@ REGISTRY=<registry>/<namespace> INSTALL_CLAUDE_CODE=true CLAUDE_CODE_VERSION=<ex
 
 - **ローカル（kind）**: [infra/clusters/kind/README.md](../infra/clusters/kind/README.md)
 - **さくらのクラウド（k3s）**: [infra/clusters/sakura-k3s/README.md](../infra/clusters/sakura-k3s/README.md)
+  - スイッチ・VPC ルータ・サーバ 3 台・k3s のインストール・kubeconfig の取得までを `terraform apply` 1 回で行います（コンテナレジストリも任意で作成）。
+  - API サーバは公開しないため、kubectl と `infra/platform` は SSH トンネル（`scripts/tunnel.sh`）経由で使います。トンネルを起動したまま 8 章に進んでください。
+  - `infra/platform` には `kubeconfig_path = "~/.config/agent-platform/kubeconfig-sakura-k3s.yaml"` を設定します。
 
 > CNI が NetworkPolicy を強制することを必ず確認してください。強制しない CNI（kind 既定の kindnet の一部バージョン、Flannel 単体など）では、Sandbox の通信制限が効きません。デプロイ後に `scripts/smoke.sh` で確認できます。
+
+### 7.1 kubectl の接続先（KUBECONFIG）
+
+クラスタを用意したら、`kubectl` の接続先をそのクラスタの kubeconfig に向けます。以降の `kubectl` コマンドとスクリプト（`scripts/create-snapshot.sh`、`scripts/smoke.sh`）、5 章の動作確認、8.4 の確認、10 章の運用は、すべてこの設定を前提にしています。
+
+- Terraform は `infra/platform/terraform.tfvars` の `kubeconfig_path` を使いますが、**`kubectl` はこの設定を読みません**。`kubectl` が読むのは環境変数 `KUBECONFIG`（未設定なら `~/.kube/config`）です。2 つが同じファイルを指すようにしてください。
+- 新しいシェルでも設定が保たれるように、`.env` に書いて読み込みます。
+
+```bash
+# .env（さくらのクラウド k3s 例の場合）
+KUBECONFIG=$HOME/.config/agent-platform/kubeconfig-sakura-k3s.yaml
+```
+
+```bash
+set -a; . ./.env; set +a
+kubectl get nodes         # 対象クラスタのノードが表示されれば OK
+```
+
+`KUBECONFIG` が対象クラスタを指していない（`~/.kube/config` が空など）と、`kubectl` は `http://localhost:8080` に接続しようとして `connection refused` で失敗します。さくらのクラウド k3s 例では、加えて SSH トンネル（`infra/clusters/sakura-k3s/scripts/tunnel.sh`）が起動している必要があります。
 
 ## 8. プラットフォームをデプロイする
 
@@ -382,22 +410,33 @@ set -a; . ../../.env; set +a
 
 最低限必要な変数: `worker_image`（build-push.sh が書き込み）、`agent_api_key`・`webhook_secret`（`.env`）、`reader_app_id`・`reader_installation_id`・`reader_private_key_path`（[3.1 の対応表](#31-控えた値の設定先)）、LLM の設定（[4.1](#41-設定する場所)）。
 
+`infra/clusters/` の構築例でクラスタを作った場合は、その README にある `infra/platform` 用の必須設定（`kubeconfig_path`、`registry_server`、webhook の Service など）も設定してください（例: [さくらのクラウド k3s](../infra/clusters/sakura-k3s/README.md#4-イメージとプラットフォーム)）。
+
 ### 8.2 リポジトリスナップショットを作る
 
-Execute Job は、対象リポジトリの git bundle を格納した ConfigMap を展開して作業します（[既知の制約](./design.md#15-既知の制約)）。namespace を先に作るため、初回は 2 段階で apply します。
+Execute Job は、対象リポジトリの git bundle を格納した ConfigMap を展開して作業します（[既知の制約](./design.md#15-既知の制約)）。ConfigMap は namespace の中に作るため、初回は 2 段階で apply します。
 
 ```bash
+# 1. namespace だけ先に作る（infra/platform で実行）
+cd infra/platform
 terraform init
 terraform apply -target=kubernetes_namespace_v1.this
+cd ../..
 
+# 2. スナップショットを作る（リポジトリ直下で実行）
+set -a; . ./.env; set +a             # KUBECONFIG を含む（7.1）
+kubectl get namespace agent-platform  # 接続先と namespace の確認
 git clone https://github.com/<owner>/<repo> /tmp/target-repo
 scripts/create-snapshot.sh /tmp/target-repo main agent-platform   # → repo-snapshot-<sha12> を表示
-# terraform.tfvars に snapshot_configmap = "repo-snapshot-<sha12>" を設定
+# infra/platform/terraform.tfvars に snapshot_configmap = "repo-snapshot-<sha12>" を設定
 
-terraform apply
+# 3. 本体一式を作る
+cd infra/platform && terraform apply
 ```
 
-対象リポジトリに新しいコミットが入ったら、スナップショットを作り直して `snapshot_configmap` を更新してください（Execute は承認時の base SHA を checkout するため、bundle にその SHA が含まれている必要があります）。
+- `create-snapshot.sh` は `kubectl` で ConfigMap を作ります。Terraform の `kubeconfig_path` は `kubectl` には効かないため、**`KUBECONFIG` を対象クラスタの kubeconfig に向けてから** 実行してください（[7.1](#71-kubectl-の接続先kubeconfig)）。向いていない場合（`~/.kube/config` が空など）、`kubectl` は `http://localhost:8080` に接続しようとして失敗します。スクリプトは最初に接続先と namespace を確認し、原因を表示して止まります。
+- さくらのクラウド k3s 例では `KUBECONFIG=~/.config/agent-platform/kubeconfig-sakura-k3s.yaml` を使い、SSH トンネル（`infra/clusters/sakura-k3s/scripts/tunnel.sh`）を起動しておきます。
+- 対象リポジトリに新しいコミットが入ったら、スナップショットを作り直して `snapshot_configmap` を更新してください（Execute は承認時の base SHA を checkout するため、bundle にその SHA が含まれている必要があります）。
 
 ### 8.3 webhook を公開する
 
@@ -412,6 +451,8 @@ Orchestrator の Service（`orchestrator:8080`）を GitHub から到達でき�
 境界は webhook の HMAC 署名と、起動者の権限チェック（fail-closed）です。GitHub の配信元 IP は変動するため、送信元 IP での制限は補助として扱ってください。
 
 ### 8.4 確認
+
+`KUBECONFIG` を設定したシェルで実行します（[7.1](#71-kubectl-の接続先kubeconfig)）。
 
 ```bash
 kubectl -n agent-platform get pods
@@ -439,7 +480,7 @@ GitHub App の設定画面 → Advanced → Recent Deliveries で webhook の配
 
 ### Orchestrator 上での手動操作
 
-状態（SQLite）はクラスタ内の PVC にあるため、`agentctl` は Orchestrator Pod 内で実行します。
+状態（SQLite）はクラスタ内の PVC にあるため、`agentctl` は Orchestrator Pod 内で実行します。`KUBECONFIG` を設定したシェルで実行してください（[7.1](#71-kubectl-の接続先kubeconfig)）。
 
 ```bash
 OP="kubectl -n agent-platform exec deploy/orchestrator --"
