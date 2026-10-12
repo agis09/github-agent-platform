@@ -5,7 +5,7 @@ output "router_global_ip" {
 
 output "ssh_command" {
   description = "SSH to the k3s server through the router port forward"
-  value       = "ssh -i ${var.admin_private_key_path} -p ${var.ssh_public_port} ubuntu@${sakuracloud_vpc_router.this.public_ip}"
+  value       = "ssh -i ${var.admin_private_key_path} -o UserKnownHostsFile=~/.config/agent-platform/known_hosts-sakura-k3s -p ${var.ssh_public_port} ubuntu@${sakuracloud_vpc_router.this.public_ip}"
 }
 
 output "kubeconfig_path" {

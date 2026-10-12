@@ -114,6 +114,7 @@ rm -f ~/.config/agent-platform/kubeconfig-sakura-k3s.yaml
 | k3s のインストールが途中で失敗した | `terraform apply` を再実行すると、失敗したステップからやり直します |
 | `409 limit_count_in_zone` | ゾーンのリソース上限（スイッチ数など）に達しています。別のゾーンを使うか、既存リソースを解放してください |
 | kubectl / `infra/platform` が `connection refused`（127.0.0.1:16443） | トンネル（`scripts/tunnel.sh`）が起動していません |
+| 手動の `ssh` で `REMOTE HOST IDENTIFICATION HAS CHANGED` | クラスタの再構築や、以前使われたグローバル IP がルータに割り当てられた場合に、`~/.ssh/known_hosts` の古いホスト鍵と食い違います。このクラスタのホスト鍵は `~/.config/agent-platform/known_hosts-sakura-k3s` で管理しているので、`terraform output -raw ssh_command`（このファイルを使う）で接続してください |
 
 ## 制約
 
