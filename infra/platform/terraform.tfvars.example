@@ -1,20 +1,31 @@
-# Copy to terraform.tfvars (gitignored) and fill in. Secrets can instead be
-# exported as TF_VAR_<name> (see .env.example) so they never touch a file.
+# Copy to terraform.tfvars (gitignored) and fill in. Secrets do NOT go here:
+# put them in .env as TF_VAR_<name> (see .env.example) and load it before
+# terraform runs.
+#
+# Cluster built with infra/clusters/sakura-k3s: use the lines marked
+# "Sakura Cloud k3s" below (required: kubeconfig_path, registry_server /
+# registry_username, webhook_service_type / webhook_node_port).
 
 # --- cluster ---
 kubeconfig_path    = "~/.kube/config"
 # kubeconfig_context = "my-cluster"
+# Sakura Cloud k3s (written by infra/clusters/sakura-k3s; keep scripts/tunnel.sh running):
+# kubeconfig_path = "~/.config/agent-platform/kubeconfig-sakura-k3s.yaml"
 namespace          = "agent-platform"
 
 # --- images (scripts/build-push.sh writes worker_image / egress_proxy_image
 #     into images.auto.tfvars) ---
-# Private registry (pull credentials for the nodes). The password is a
-# secret: put it in .env as TF_VAR_registry_password, not here.
+# Private registry (pull credentials for the nodes). registry_server is the
+# HOST only and must be the host of worker_image. The password is a secret:
+# put it in .env as TF_VAR_registry_password, not here.
 # registry_server   = "ghcr.io"
 # registry_username = "my-bot"
+# Sakura Cloud k3s (terraform output -raw registry_fqdn in infra/clusters/sakura-k3s):
+# registry_server   = "<label>.sakuracr.jp"
+# registry_username = "push"
 
 # --- agent runtime / LLM (docs/usage.md §4) ---
-# The API key is NOT written here: export TF_VAR_agent_api_key (see .env.example).
+# The API key is NOT written here: set TF_VAR_agent_api_key in .env (see .env.example).
 #
 # Sakura AI Engine (OpenAI-compatible Responses API) + Codex CLI:
 agent_runtime  = "codex"
@@ -48,7 +59,7 @@ reader_private_key_path = "~/.config/agent-platform/reader.pem"
 publisher_app_id           = "234567"
 publisher_installation_id  = "23456789"
 publisher_private_key_path = "~/.config/agent-platform/publisher.pem"
-# webhook_secret = "..."               # TF_VAR_webhook_secret recommended
+# webhook_secret: set TF_VAR_webhook_secret in .env
 
 webhook_config = {
   trigger       = "comment"
@@ -57,6 +68,9 @@ webhook_config = {
   auto_pipeline = true
 }
 webhook_service_type = "ClusterIP"   # NodePort / LoadBalancer, or front it with your Ingress
+# Sakura Cloud k3s (the VPC router forwards public 8080 to this NodePort):
+# webhook_service_type = "NodePort"
+# webhook_node_port    = 30080
 
 # --- execute sandbox ---
 snapshot_configmap = ""               # scripts/create-snapshot.sh prints the name
@@ -66,7 +80,7 @@ egress_level       = "none"           # none | allowlist | full
 # --- web search (disabled by default; docs/usage.md §5) ---
 search_provider = "none"              # none | fake | brave | http-json
 # search_provider_url = "https://search.example.com/api"   # http-json only
-# search_api_key      = "..."          # TF_VAR_search_api_key recommended
+# search_api_key: set TF_VAR_search_api_key in .env
 
 # --- storage ---
 # state_storage_class = "standard"
