@@ -352,6 +352,9 @@ REGISTRY=<registry>/<namespace> INSTALL_CLAUDE_CODE=true CLAUDE_CODE_VERSION=<ex
 
 - **ローカル（kind）**: [infra/clusters/kind/README.md](../infra/clusters/kind/README.md)
 - **さくらのクラウド（k3s）**: [infra/clusters/sakura-k3s/README.md](../infra/clusters/sakura-k3s/README.md)
+  - スイッチ・VPC ルータ・サーバ 3 台・k3s のインストール・kubeconfig の取得までを `terraform apply` 1 回で行います（コンテナレジストリも任意で作成）。
+  - API サーバは公開しないため、kubectl と `infra/platform` は SSH トンネル（`scripts/tunnel.sh`）経由で使います。トンネルを起動したまま 8 章に進んでください。
+  - `infra/platform` には `kubeconfig_path = "~/.config/agent-platform/kubeconfig-sakura-k3s.yaml"` を設定します。
 
 > CNI が NetworkPolicy を強制することを必ず確認してください。強制しない CNI（kind 既定の kindnet の一部バージョン、Flannel 単体など）では、Sandbox の通信制限が効きません。デプロイ後に `scripts/smoke.sh` で確認できます。
 

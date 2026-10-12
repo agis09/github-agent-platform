@@ -1,32 +1,91 @@
-# Example cluster for the platform: k3s on Sakura Cloud.
+# Example cluster for the platform: k3s on Sakura Cloud, built by one
+# `terraform apply` (network, servers, k3s install, kubeconfig).
 #
 #   VPC router (global IP, NAT egress)
 #     ├─ port forward ssh_public_port -> k3s server :22 (bastion, key auth only)
 #     ├─ port forward webhook_public_port -> k3s server :webhook_node_port
 #     └─ private switch (switch_cidr)
-#          ├─ k3s server   <prefix>.<host>
+#          ├─ k3s server   <switch_cidr>.<host>
 #          └─ k3s agents   ...
 #
 # Nodes have no global IP. kubectl reaches the API through an SSH tunnel
 # (scripts/tunnel.sh). After the cluster is up, deploy the platform with
-# infra/platform (kubeconfig from scripts/fetch-kubeconfig.sh).
+# infra/platform (kubeconfig_path output).
 #
-# NOTE on provisioning: the Ubuntu public archive used here ships without
-# cloud-init, so SSH keys are written at disk creation time with the
-# create-with-edit API, which the terraform disk resource does not expose.
-# README.md describes the out-of-band `usacloud disk create` + import step.
+# Order of creation:
+#   switch -> servers (SSH key written by the disk edit at creation; the
+#   NIC asks for DHCP) -> router (DHCP static mapping pinned to each
+#   server's MAC, port forwards) -> k3s install over SSH (k3s.tf).
 
 locals {
-  network     = cidrhost(var.switch_cidr, 0)
   gateway     = cidrhost(var.switch_cidr, 1)
+  netmask     = tonumber(split("/", var.switch_cidr)[1])
   node_ip     = { for name, n in var.nodes : name => cidrhost(var.switch_cidr, n.host) }
   server_name = one([for name, n in var.nodes : name if n.role == "server"])
   server_ip   = local.node_ip[local.server_name]
+  agent_names = [for name, n in var.nodes : name if n.role == "agent"]
 }
 
 resource "sakuracloud_switch" "this" {
   name        = "${var.prefix}-switch"
   description = "agent-platform k3s private switch (${var.switch_cidr})"
+}
+
+resource "sakuracloud_ssh_key" "admin" {
+  name       = "${var.prefix}-admin-key"
+  public_key = var.admin_public_key
+}
+
+data "sakuracloud_archive" "ubuntu" {
+  os_type = "ubuntu2404"
+}
+
+resource "sakuracloud_disk" "nodes" {
+  for_each          = var.nodes
+  name              = "${var.prefix}-disk-${each.key}"
+  plan              = "ssd"
+  connector         = "virtio"
+  size              = 20
+  source_archive_id = data.sakuracloud_archive.ubuntu.id
+}
+
+# Console login for rescue only (SSH password auth stays disabled).
+resource "random_password" "console" {
+  length  = 20
+  special = false
+}
+
+resource "sakuracloud_server" "nodes" {
+  for_each   = var.nodes
+  name       = "${var.prefix}-${each.key}"
+  core       = each.value.core
+  memory     = each.value.memory
+  commitment = "standard"
+  disks      = [sakuracloud_disk.nodes[each.key].id]
+
+  network_interface {
+    upstream        = sakuracloud_switch.this.id
+    user_ip_address = local.node_ip[each.key]
+  }
+
+  # The Ubuntu public archive has no cloud-init: the SSH key and the
+  # console password are written by the disk edit at creation. Do not set
+  # hostname here (it breaks booting on this archive); k3s.tf sets it.
+  disk_edit_parameter {
+    ssh_key_ids     = [sakuracloud_ssh_key.admin.id]
+    password        = random_password.console.result
+    disable_pw_auth = true
+  }
+
+  timeouts {
+    create = "30m"
+  }
+
+  lifecycle {
+    # The disk edit only runs at creation; a later change must not
+    # recreate the node.
+    ignore_changes = [disk_edit_parameter]
+  }
 }
 
 resource "sakuracloud_vpc_router" "this" {
@@ -38,7 +97,7 @@ resource "sakuracloud_vpc_router" "this" {
     index        = 1
     switch_id    = sakuracloud_switch.this.id
     ip_addresses = [local.gateway]
-    netmask      = 24
+    netmask      = local.netmask
   }
 
   port_forwarding {
@@ -60,9 +119,8 @@ resource "sakuracloud_vpc_router" "this" {
     }
   }
 
-  # Node IPs: DHCP with per-node static MAC mappings (filled via node_macs
-  # after the first apply creates the NICs). Pool and mappings must not
-  # overlap.
+  # Node IPs: DHCP with each server's MAC pinned to its address. The pool
+  # and the mappings must not overlap.
   dhcp_server {
     interface_index = 1
     range_start     = cidrhost(var.switch_cidr, 200)
@@ -71,47 +129,11 @@ resource "sakuracloud_vpc_router" "this" {
   }
 
   dynamic "dhcp_static_mapping" {
-    for_each = var.node_macs
+    for_each = sakuracloud_server.nodes
     content {
-      mac_address = dhcp_static_mapping.value
+      mac_address = lower(dhcp_static_mapping.value.network_interface[0].mac_address)
       ip_address  = local.node_ip[dhcp_static_mapping.key]
     }
-  }
-}
-
-resource "sakuracloud_ssh_key" "admin" {
-  name       = "${var.prefix}-admin-key"
-  public_key = var.admin_public_key
-}
-
-data "sakuracloud_archive" "ubuntu" {
-  os_type = "ubuntu2404"
-}
-
-resource "sakuracloud_disk" "nodes" {
-  for_each          = var.nodes
-  name              = "${var.prefix}-disk-${each.key}"
-  plan              = "ssd"
-  connector         = "virtio"
-  size              = 20
-  source_archive_id = data.sakuracloud_archive.ubuntu.id
-}
-
-resource "sakuracloud_server" "nodes" {
-  for_each   = var.nodes
-  name       = "${var.prefix}-${each.key}"
-  core       = each.value.core
-  memory     = each.value.memory
-  commitment = "standard"
-  disks      = [sakuracloud_disk.nodes[each.key].id]
-
-  network_interface {
-    upstream        = sakuracloud_switch.this.id
-    user_ip_address = local.node_ip[each.key]
-  }
-
-  timeouts {
-    create = "30m"
   }
 }
 

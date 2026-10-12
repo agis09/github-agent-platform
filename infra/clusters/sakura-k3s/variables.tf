@@ -11,8 +11,20 @@ variable "prefix" {
 }
 
 variable "admin_public_key" {
-  description = "SSH public key authorized on the nodes"
+  description = "SSH public key written to every node disk at creation (user ubuntu)"
   type        = string
+}
+
+variable "admin_private_key_path" {
+  description = "Private key matching admin_public_key, used by terraform to install k3s over SSH (read locally, never stored in state)"
+  type        = string
+  default     = "~/.ssh/id_ed25519"
+}
+
+variable "kubeconfig_path" {
+  description = "Where terraform writes the cluster kubeconfig (server rewritten to the SSH tunnel endpoint https://127.0.0.1:16443)"
+  type        = string
+  default     = "~/.config/agent-platform/kubeconfig-sakura-k3s.yaml"
 }
 
 variable "switch_cidr" {
@@ -38,12 +50,6 @@ variable "nodes" {
     condition     = length([for n in var.nodes : n if n.role == "server"]) == 1
     error_message = "exactly one node must have role = server."
   }
-}
-
-variable "node_macs" {
-  description = "Node name -> NIC MAC (lowercase) for the router's DHCP static mapping. Fill after the first apply (terraform output node_macs)"
-  type        = map(string)
-  default     = {}
 }
 
 variable "dns_servers" {

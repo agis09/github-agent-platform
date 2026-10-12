@@ -5,7 +5,17 @@ output "router_global_ip" {
 
 output "ssh_command" {
   description = "SSH to the k3s server through the router port forward"
-  value       = "ssh -p ${var.ssh_public_port} ubuntu@${sakuracloud_vpc_router.this.public_ip}"
+  value       = "ssh -i ${var.admin_private_key_path} -p ${var.ssh_public_port} ubuntu@${sakuracloud_vpc_router.this.public_ip}"
+}
+
+output "kubeconfig_path" {
+  description = "kubeconfig for infra/platform (kubeconfig_path). Needs scripts/tunnel.sh running"
+  value       = var.kubeconfig_path
+}
+
+output "tunnel_command" {
+  description = "Start the SSH tunnel to the k3s API (keep it running while using kubectl / infra/platform)"
+  value       = "SSH_KEY=${var.admin_private_key_path} ${path.module}/scripts/tunnel.sh"
 }
 
 output "webhook_url" {
@@ -18,21 +28,10 @@ output "node_ips" {
   value       = local.node_ip
 }
 
-output "node_macs" {
-  description = "NIC MACs to copy into var.node_macs (lowercase)"
-  value       = { for name, s in sakuracloud_server.nodes : name => lower(s.network_interface[0].mac_address) }
-}
-
-output "k3s_install" {
-  description = "Commands to run on each node over SSH (server first). Contains the join token"
+output "console_password" {
+  description = "Password of user ubuntu for the Sakura Cloud console (rescue only; SSH password auth is disabled)"
+  value       = random_password.console.result
   sensitive   = true
-  value = {
-    for name, n in var.nodes : name => (
-      n.role == "server"
-      ? "curl -sfL https://get.k3s.io | INSTALL_K3S_VERSION=${var.k3s_version} K3S_TOKEN=${random_password.k3s_token.result} INSTALL_K3S_EXEC='server --node-ip ${local.node_ip[name]} --advertise-address ${local.node_ip[name]} --tls-san 127.0.0.1 --write-kubeconfig-mode 600 --disable traefik --disable servicelb' sh -"
-      : "curl -sfL https://get.k3s.io | INSTALL_K3S_VERSION=${var.k3s_version} K3S_URL=https://${local.server_ip}:6443 K3S_TOKEN=${random_password.k3s_token.result} INSTALL_K3S_EXEC='agent --node-ip ${local.node_ip[name]}' sh -"
-    )
-  }
 }
 
 output "registry_fqdn" {
