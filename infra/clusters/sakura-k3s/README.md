@@ -24,7 +24,11 @@ k3s 同梱の kube-router が NetworkPolicy を強制し、local-path-provisione
 
 ## 前提
 
-- Terraform 1.9+、SSH 鍵ペア（既定 `~/.ssh/id_ed25519`）
+- Terraform 1.9+
+- このクラスタ専用の SSH 鍵ペア。Terraform が SSH で k3s をインストールするため、**パスフレーズなし** で作成します（パスフレーズ付きの鍵は remote-exec で使えません）。
+  ```bash
+  ssh-keygen -t ed25519 -N "" -C "agent-platform sakura-k3s" -f ~/.ssh/agent-platform
+  ```
 - さくらのクラウドの API キー（**対象プロジェクトに紐づくもの**）。リポジトリ直下の `.env` に書きます（gitignore 済み）。
 
 ```bash
@@ -40,8 +44,8 @@ SAKURACLOUD_ACCESS_TOKEN_SECRET=...
 ```bash
 cd infra/clusters/sakura-k3s
 cat > terraform.tfvars <<EOT                       # gitignore 済み
-admin_public_key       = "$(cat ~/.ssh/id_ed25519.pub)"
-admin_private_key_path = "~/.ssh/id_ed25519"
+admin_public_key       = "$(cat ~/.ssh/agent-platform.pub)"
+admin_private_key_path = "~/.ssh/agent-platform"
 registry_subdomain     = "<全 sakuracr.jp で一意なラベル>"   # レジストリ不要なら省略
 EOT
 ```
@@ -63,7 +67,7 @@ terraform apply
 API サーバは公開していないため、SSH トンネルを張って使います。kubectl や `infra/platform` の Terraform を使う間は、トンネルを起動したままにしてください。
 
 ```bash
-SSH_KEY=~/.ssh/id_ed25519 scripts/tunnel.sh &      # 127.0.0.1:16443 → API サーバ（terraform output tunnel_command と同じ）
+SSH_KEY=~/.ssh/agent-platform scripts/tunnel.sh &      # 127.0.0.1:16443 → API サーバ（terraform output tunnel_command と同じ）
 export KUBECONFIG=$(terraform output -raw kubeconfig_path | sed "s#^~#$HOME#")
 kubectl get nodes                                  # 3 台が Ready
 ```
