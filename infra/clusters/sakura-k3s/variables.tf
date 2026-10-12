@@ -18,7 +18,7 @@ variable "admin_public_key" {
 variable "admin_private_key_path" {
   description = "Private key matching admin_public_key, used by terraform to install k3s over SSH (read locally, never stored in state)"
   type        = string
-  default     = "~/.ssh/id_ed25519"
+  default     = "~/.ssh/agent-platform"
 }
 
 variable "kubeconfig_path" {
