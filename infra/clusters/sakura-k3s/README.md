@@ -66,9 +66,16 @@ terraform apply
 
 API サーバは公開していないため、SSH トンネルを張って使います。kubectl や `infra/platform` の Terraform を使う間は、トンネルを起動したままにしてください。
 
+`kubectl` とスクリプトの接続先は環境変数 `KUBECONFIG` で決まります（`infra/platform` の `kubeconfig_path` は `kubectl` には効きません）。新しいシェルでも使えるように、リポジトリ直下の `.env` に書いておきます。
+
+```bash
+# .env
+KUBECONFIG=$HOME/.config/agent-platform/kubeconfig-sakura-k3s.yaml
+```
+
 ```bash
 SSH_KEY=~/.ssh/agent-platform scripts/tunnel.sh &      # 127.0.0.1:16443 → API サーバ（terraform output tunnel_command と同じ）
-export KUBECONFIG=$(terraform output -raw kubeconfig_path | sed "s#^~#$HOME#")
+set -a; . ../../../.env; set +a                    # KUBECONFIG を読み込む
 kubectl get nodes                                  # 3 台が Ready
 ```
 
